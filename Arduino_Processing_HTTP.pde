@@ -2,11 +2,12 @@
 // COM Port List, COM Port Choice
 // Vehicle ID?
 // Set Date Time?
-// 
 
+//Interface
+//Port change option
+//Current Sensor threshold option - default. current current value.
 
 import http.requests.*;
-
 
 import processing.serial.*;
 Serial myPort;
@@ -18,9 +19,6 @@ int[] receivedValues = new int[valuesCount];      // Array to store received val
 int storeIndex = 0;
 
 String delimitor = ",";
-
-//String vehicleID, userID, date, time;
-
 int sessionID = 0;
 
 import http.requests.*;
@@ -35,7 +33,7 @@ void setup() {
   background(0);
 
   printArray(Serial.list());
-  myPort = new Serial(this, Serial.list()[2], 9600);
+  myPort = new Serial(this, Serial.list()[0], 9600);
 }
 
 void draw() {
@@ -64,11 +62,12 @@ void serialEvent(Serial myPort) {
 
         String dataArray[] = data.split(",");
         String login = dataArray[4].trim();
-        
+
         String rfidSerial = dataArray[1];
         int vehicleID = int(dataArray[0]);
 
-        if (int(login) == 1) {                                    // LOG IN REQUEST
+        // LOG IN REQUEST
+        if (int(login) == 1) {                                   
           println("Login called");
 
           JSONObject json = new JSONObject();
@@ -76,39 +75,46 @@ void serialEvent(Serial myPort) {
 
           json.setInt("vehicle_id", vehicleID);
           json.setString("rfid_serial", rfidSerial);
-          json.setString("start_time", "2018-01-06 17:20:06.125254");
+          json.setString("start_time", formatDateTime(dataArray[2], dataArray[3]));
 
           httpPost(json, apiEndpoint, true);
-        } else if (int(login) == 0 && sessionID > 0) {            // LOG OUT REQUEST
+        } 
+
+        // LOG OUT REQUEST
+        else if (int(login) == 0) {            
           println("Logout called");
 
           JSONObject json = new JSONObject();
           String apiEndpoint = "http://airtrack.eu-west-1.elasticbeanstalk.com/v1/endSession";
 
           json.setInt("session_id", sessionID);
-          json.setString("end_time", "2018-01-06 17:20:06.125254");
+          json.setString("end_time", formatDateTime(dataArray[2], dataArray[3]));
 
           httpPost(json, apiEndpoint, false);
-          
+
           sessionID = 0;
         } else println("Call Error");
 
         printArray(dataArray);
       } 
 
+
+
       // MALFUNCTION ERROR REQUEST
       else if (data.endsWith("$ERR")) {      
-        // IN (String _vehicle, String _date, String _time, Current lamp)
+        // IN (String _vehicle, String _sessionID, String _date, String _time, Current lamp)
         // OUT "session_id", "time", "vehicle_id", "part_id"
         println("Error Request Called");
 
         String dataArray[] = data.split(",");
 
+        printArray(dataArray);
+
         JSONObject json = new JSONObject();
         String apiEndpoint = "http://airtrack.eu-west-1.elasticbeanstalk.com/v1/createMalfunction";
 
         json.setInt("session_id", sessionID);
-        json.setString("time", "2018-01-06 17:20:06.125254");
+        json.setString("time", formatDateTime(dataArray[2], dataArray[3]));
         json.setInt("vehicle_id", int(dataArray[0]));
         json.setInt("part_id", int(dataArray[4]));
 
@@ -122,16 +128,13 @@ void serialEvent(Serial myPort) {
         println("Fix Request Called");
 
         String dataArray[] = data.split(",");
-        
-                printArray(dataArray);
-
 
         JSONObject json = new JSONObject();
         String apiEndpoint = "http://airtrack.eu-west-1.elasticbeanstalk.com/v1/fixMalfunction";
 
-        json.setInt("session_id", sessionID);
-        json.setString("time", "2018-01-06 17:20:06.125254");
-        //json.setInt("vehicle_id", int(dataArray[0]));                // ADD VEHICLE ID?
+        //json.setInt("session_id", sessionID);
+        json.setString("time", formatDateTime(dataArray[2], dataArray[3]));
+        json.setInt("vehicle_id", int(dataArray[0]));                // ADD VEHICLE ID?
         json.setInt("part_id", int(dataArray[4]));
 
         httpPost(json, apiEndpoint, false);
@@ -142,9 +145,24 @@ void serialEvent(Serial myPort) {
   }
 }
 
-//String formatDateTime(String _date, String _time) {
-//  String date = _date, time = _time;
-//}
+
+String formatDateTime(String _date, String _time) {
+  println("FDT Called");
+  println(_date);
+  println(_time);
+  String dateArray[] = _date.trim().split("\\.");
+  printArray(dateArray);
+
+  String day = dateArray[0].trim();
+  String month = dateArray[1].trim();
+  String year = dateArray[2].trim();
+
+  String newDate = year + "-" + month + "-" + day + " " + _time + ".000000";
+  println("New Date:");
+  println(newDate);
+  return newDate;
+}
+
 
 void httpPost(JSONObject json, String apiEndpoint, boolean logPost) {
 
@@ -156,7 +174,7 @@ void httpPost(JSONObject json, String apiEndpoint, boolean logPost) {
 
   post.send();
 
-  System.out.println("Reponse Content: " + post.getContent());
+  System.out.println("Response Content: " + post.getContent());
 
   JSONObject response = parseJSONObject(post.getContent());
   if (logPost)  sessionID = response.getInt("session_id");
